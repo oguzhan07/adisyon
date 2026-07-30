@@ -1,0 +1,39 @@
+appId: com.kokorecci.adisyon
+productName: Adisyon
+copyright: © Kokoreççi
+
+# electron-builder kesin surum ister (platforma ozel ikili indirir). package.json'da
+# aralik (^43) yazdigimiz icin burada acikca sabitliyoruz.
+electronVersion: 43.2.0
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist-electron/**/*
+  - package.json
+
+# sharp ve node-thermal-printer native/CommonJS modulleri: paketin icine
+# asenkron olarak kopyalanmalari gerekir, asar icinde sikistirilmamalilar.
+asarUnpack:
+  - '**/node_modules/sharp/**'
+  - '**/node_modules/@img/**'
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  # Kod imzalama sertifikasi yok: Windows SmartScreen ilk kurulumda uyari
+  # gosterecek. Musteriye "Daha fazla bilgi > Yine de calistir" adimini
+  # anlatmak gerekiyor (kurulum kilavuzuna eklendi).
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Adisyon
+  # Kasa bilgisayari acildiginda program hazir olsun
+  deleteAppDataOnUninstall: false

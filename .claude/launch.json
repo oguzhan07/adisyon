@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "menu",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:menu"],
+      "port": 3000
+    }
+  ]
+}

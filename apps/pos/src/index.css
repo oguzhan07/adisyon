@@ -1,0 +1,31 @@
+@import 'tailwindcss';
+@import '@adisyon/shared/theme.css';
+
+@source '../src';
+
+@layer base {
+  /* Kasa programi bir masaustu uygulamasi: metin secimi ve suruklemeyi
+     kapatiyoruz. Dokunmatik ekranda yanlislikla metin secmek, buton yerine
+     yazi tutmak gibi sinir bozucu davranislari onler. */
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+
+  /* Giris alanlarinda secim tabii ki acik kalmali */
+  input,
+  textarea {
+    user-select: text;
+  }
+
+  /* Dokunmatik ekranda gecikmeli tiklama hissini kaldirir */
+  button,
+  a,
+  [role='button'] {
+    touch-action: manipulation;
+  }
+}

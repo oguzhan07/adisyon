@@ -1,0 +1,28 @@
+node_modules/
+dist/
+dist-electron/
+out/
+release/
+build/
+.next/
+.turbo/
+*.log
+npm-debug.log*
+
+# Ortam degiskenleri - ASLA commit edilmez
+.env
+.env.local
+.env*.local
+!.env.example
+
+# Supabase yerel gelistirme
+supabase/.branches/
+supabase/.temp/
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

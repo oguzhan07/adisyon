@@ -1,0 +1,9 @@
+# Depoda satir sonlarini LF olarak normallestir (Windows/Mac/Linux tutarliligi)
+* text=auto eol=lf
+
+# Ikili dosyalar dokunulmasin
+*.png binary
+*.jpg binary
+*.webp binary
+*.ico binary
+*.exe binary

@@ -1,0 +1,36 @@
+@import 'tailwindcss';
+@import '@adisyon/shared/theme.css';
+
+/* Monorepo'da Tailwind'in tarayacagi kaynaklar */
+@source '../app';
+@source '../components';
+
+/* QR menu sistem temasina uyar: musterinin telefonu koyu moddaysa koyu acilir */
+@layer base {
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+      color-scheme: dark;
+
+      --color-surface: #1a1a18;
+      --color-surface-raised: #242422;
+      --color-surface-sunken: #131311;
+      --color-border: #34342f;
+      --color-border-strong: #4a4a44;
+
+      --color-text: #f2f2ef;
+      --color-text-muted: #a3a39c;
+      --color-text-faint: #71716b;
+
+      --color-accent: #f59e0b;
+      --color-accent-soft: #3a2a10;
+
+      --color-status-idle: #a3a39c;
+      --color-status-alert: #f87171;
+    }
+  }
+
+  /* Kategori baslikari sabit sekme cubugunun altinda kalmasin */
+  [id^='kategori-'] {
+    scroll-margin-top: 4.5rem;
+  }
+}

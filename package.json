@@ -1,0 +1,42 @@
+{
+  "name": "adisyon",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kokoreççi QR menü + adisyon + stok sistemi",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev:menu": "npm run dev --workspace=@adisyon/menu",
+    "dev:pos": "npm run dev --workspace=@adisyon/pos",
+    "build:menu": "npm run build --workspace=@adisyon/menu",
+    "build:pos": "npm run build --workspace=@adisyon/pos",
+    "dist:pos": "npm run dist --workspace=@adisyon/pos",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "db:types": "npx supabase gen types typescript --local > packages/shared/src/database.types.ts",
+    "db:reset": "npx supabase db reset",
+    "db:start": "npx supabase start",
+    "db:stop": "npx supabase stop",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  },
+  "//overrides": [
+    "Next.js kendi icinde guvenlik acigi bulunan postcss ve sharp surumlerini",
+    "paketliyor (GHSA-qx2v-qp2m-jg93, GHSA-6g55-p6wh-862q, GHSA-r28c-9q8g-f849,",
+    "GHSA-f88m-g3jw-g9cj). Duzeltilmis surumler mevcut ama Next henuz onlara",
+    "gecmedi; `npm audit fix --force` ise Next'i 9.x'e dusurmek isteyecegi icin",
+    "kabul edilemez. Override ile duzeltilmis surumlere sabitliyoruz."
+  ],
+  "overrides": {
+    "postcss": "^8.5.25",
+    "sharp": "^0.35.3",
+    "brace-expansion": "^5.0.8"
+  }
+}
