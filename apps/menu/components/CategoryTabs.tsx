@@ -18,29 +18,30 @@ export function CategoryTabs({ categories }: Props) {
   const barRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const sections = categories
-      .map((c) => document.getElementById(`kategori-${c.id}`))
-      .filter((el): el is HTMLElement => el !== null);
+    // Kaydirma tabanli aktif-sekme tespiti: sabit cubugun hemen altindaki
+    // esik cizgisini gecmis EN SON bolum aktiftir. En ustteyken hicbir bolum
+    // esigi gecmedigi icin ilk kategori (Kokorec) aktif kalir - Intersection
+    // Observer'in en uste yanlis kategoriyi secmesi sorunu boyle cozuluyor.
+    const THRESHOLD = 100; // sabit sekme cubugu + bir miktar bosluk (px)
 
-    if (sections.length === 0) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        // Ekranda gorunen en ustteki bolum aktif kabul edilir
-        const visible = entries
-          .filter((e) => e.isIntersecting)
-          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-
-        if (visible[0]) {
-          setActiveId(visible[0].target.id.replace('kategori-', ''));
+    const update = () => {
+      let current = categories[0]?.id ?? '';
+      for (const category of categories) {
+        const el = document.getElementById(`kategori-${category.id}`);
+        if (el && el.getBoundingClientRect().top - THRESHOLD <= 0) {
+          current = category.id;
         }
-      },
-      // Sabit cubugun yuksekligi kadar ust bosluk birakiyoruz
-      { rootMargin: '-72px 0px -60% 0px', threshold: 0 },
-    );
+      }
+      setActiveId(current);
+    };
 
-    sections.forEach((section) => observer.observe(section));
-    return () => observer.disconnect();
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
   }, [categories]);
 
   // Aktif sekme gorunur alandan cikarsa yatayda ona kaydir

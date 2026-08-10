@@ -64,6 +64,7 @@ export function buildBill(
     tableLabel,
     openedAt: detail.order.opened_at,
     closedAt: detail.order.closed_at ?? new Date().toISOString(),
+    printedAt: new Date().toISOString(),
     items,
     subtotalKurus: detail.totals.subtotal_kurus,
     discountKurus: detail.totals.discount_kurus,

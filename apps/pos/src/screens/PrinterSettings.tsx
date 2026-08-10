@@ -134,15 +134,15 @@ export function PrinterSettingsScreen() {
 
         {isUsb && (
           <Field
-            label="Windows paylaşım adı"
+            label="Windows yazıcı adı"
             hint={
-              'Yazıcının Windows’ta paylaşıma açılmış olması gerekir. ' +
-              'Denetim Masası > Yazıcılar > sağ tık > Yazıcı özellikleri > Paylaşım.'
+              'Windows’ta kurulu yazıcının adı (Ayarlar > Bluetooth ve cihazlar > ' +
+              'Yazıcılar). Buradaki adla birebir aynı yazılmalı. Örn: ACLAS80'
             }
           >
             <TextInput
               value={draft.printerName ?? ''}
-              placeholder="POSA80"
+              placeholder="ACLAS80"
               onChange={(event) => patch({ printerName: event.target.value.trim() || null })}
             />
           </Field>

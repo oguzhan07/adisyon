@@ -67,6 +67,8 @@ export interface BillData {
   tableLabel: string;
   openedAt: string;
   closedAt: string;
+  /** Fisin fiziksel olarak basildigi an (kagitta gorunur) */
+  printedAt: string;
   items: BillItem[];
   subtotalKurus: number;
   discountKurus: number;

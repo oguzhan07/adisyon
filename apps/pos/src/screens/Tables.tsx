@@ -103,6 +103,12 @@ export function Tables() {
                       <div className="text-xs text-(--color-text-muted)">
                         {formatElapsed(order.opened_at)} · {order.item_count} ürün
                       </div>
+                      {/* Kismi odeme varsa belli et: kalan tutar + rozet */}
+                      {order.paid_kurus > 0 && order.remaining_kurus > 0 && (
+                        <div className="mt-1 rounded-full bg-(--color-surface-raised) px-2 py-0.5 text-xs font-medium text-(--color-accent)">
+                          Kalan {formatTRY(order.remaining_kurus)}
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <span className="text-sm text-(--color-text-faint)">Boş</span>

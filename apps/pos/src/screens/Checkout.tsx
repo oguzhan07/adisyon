@@ -8,7 +8,6 @@ import {
   PAYMENT_METHOD_LABELS,
 } from '@adisyon/shared';
 import {
-  useOpenOrders,
   useOrderDetail,
   useOrderMutations,
   usePaymentMutations,
@@ -23,9 +22,11 @@ import { Modal } from '../ui/Modal';
 import { useFeedback } from '../ui/feedback';
 
 /**
- * Kasa ekrani: odeme, hesap bolme, indirim, masa tasima/birlestirme ve adisyon
- * kapatma. Kapanis rpc_close_order uzerinden gecer (kalan tutar kontrolu +
- * stok dusum tetigi); ardindan hesap fisi basilir ve cekmece acilir.
+ * Kasa ekrani: odeme, hesap bolme, indirim ve adisyon kapatma. Kapanis
+ * rpc_close_order uzerinden gecer (kalan tutar kontrolu + stok dusum tetigi);
+ * ardindan hesap fisi basilir ve cekmece acilir.
+ *
+ * Masa tasima/birlestirme burada DEGIL, adisyon (siparis girme) ekranindadir.
  */
 export function Checkout() {
   const { orderId } = useParams<{ orderId: string }>();
@@ -34,15 +35,13 @@ export function Checkout() {
 
   const detail = useOrderDetail(orderId ?? null);
   const tables = useTables();
-  const openOrders = useOpenOrders();
   const settings = useSettings();
   const { addPayment, removePayment, closeOrder } = usePaymentMutations();
-  const { applyDiscount, moveTable, mergeOrders } = useOrderMutations();
+  const { applyDiscount } = useOrderMutations();
 
   const [method, setMethod] = useState<'cash' | 'card'>('cash');
   const [amountText, setAmountText] = useState('');
   const [discountOpen, setDiscountOpen] = useState(false);
-  const [moveOpen, setMoveOpen] = useState(false);
 
   const tableName = useMemo(() => {
     const tableId = detail.data?.order.table_id;
@@ -206,9 +205,6 @@ export function Checkout() {
             <Button variant="secondary" onClick={() => setDiscountOpen(true)}>
               İndirim / ikram
             </Button>
-            <Button variant="secondary" onClick={() => setMoveOpen(true)}>
-              Masa taşı / birleştir
-            </Button>
           </div>
         </div>
       </div>
@@ -275,14 +271,34 @@ export function Checkout() {
           Ödeme ekle
         </Button>
 
-        <Button
-          size="lg"
-          variant={remaining <= 0 ? 'primary' : 'secondary'}
-          className="mt-2"
-          onClick={handleClose}
-        >
-          {remaining <= 0 ? 'Kapat ve fiş bas' : 'Ödemeden kapat'}
-        </Button>
+        {remaining <= 0 ? (
+          <Button size="lg" variant="primary" className="mt-2" onClick={handleClose}>
+            Kapat ve fiş bas
+          </Button>
+        ) : (
+          <>
+            {/* Kismi odeme senaryosu: bir kisim odedi, gerisi sonra odeyecek.
+                Masa ACIK kalir, alinan odeme kayitli; kasadan cikilir, sonra
+                donup kalan tahsil edilir. */}
+            <Button
+              size="lg"
+              variant="secondary"
+              className="mt-2"
+              onClick={() => navigate('/masalar')}
+            >
+              Kaydet ve Çık (masa açık kalsın)
+            </Button>
+
+            {/* Kalani tahsil etmeden kapatma (ikram/zarar) - onay sorar */}
+            <button
+              type="button"
+              onClick={handleClose}
+              className="mt-2 min-h-11 w-full rounded-(--radius-control) text-sm text-(--color-status-alert) hover:bg-(--color-status-alert-soft)"
+            >
+              Ödeme almadan kapat
+            </button>
+          </>
+        )}
       </aside>
 
       {discountOpen && orderId && (
@@ -301,33 +317,6 @@ export function Checkout() {
         />
       )}
 
-      {moveOpen && orderId && detail.data && (
-        <MoveMergeModal
-          orderId={orderId}
-          currentTableId={detail.data.order.table_id}
-          onClose={() => setMoveOpen(false)}
-          onMove={async (tableId) => {
-            try {
-              await moveTable.mutateAsync({ orderId, tableId });
-              feedback.toast('Masa taşındı.', 'ok');
-              setMoveOpen(false);
-            } catch (e) {
-              feedback.toast(describeError(e), 'error');
-            }
-          }}
-          onMerge={async (targetOrderId) => {
-            try {
-              await mergeOrders.mutateAsync({ sourceOrderId: orderId, targetOrderId });
-              feedback.toast('Adisyonlar birleştirildi.', 'ok');
-              navigate(`/adisyon/${targetOrderId}`);
-            } catch (e) {
-              feedback.toast(describeError(e), 'error');
-            }
-          }}
-          tables={tables.data ?? []}
-          openOrders={openOrders.data ?? []}
-        />
-      )}
     </div>
   );
 }
@@ -412,63 +401,6 @@ function DiscountModal({
             className="w-full min-h-12 rounded-(--radius-control) border border-(--color-border-strong) bg-(--color-surface-raised) px-3 text-base"
           />
         </div>
-      </div>
-    </Modal>
-  );
-}
-
-/* --------------------------------------------------- masa tasi / birlestir */
-
-function MoveMergeModal({
-  currentTableId,
-  onClose,
-  onMove,
-  onMerge,
-  tables,
-  openOrders,
-}: {
-  orderId: string;
-  currentTableId: string | null;
-  onClose: () => void;
-  onMove: (tableId: string) => void;
-  onMerge: (targetOrderId: string) => void;
-  tables: import('../lib/dbTypes').RestaurantTable[];
-  openOrders: import('../lib/dbTypes').OrderTotals[];
-}) {
-  const openByTable = new Map(openOrders.filter((o) => o.table_id).map((o) => [o.table_id!, o]));
-
-  return (
-    <Modal open onClose={onClose} title="Masa taşı / birleştir" wide>
-      <p className="mb-3 text-sm text-(--color-text-muted)">
-        Boş masaya dokunmak <strong>taşır</strong>; açık adisyonu olan masaya dokunmak iki adisyonu{' '}
-        <strong>birleştirir</strong>.
-      </p>
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-2">
-        {tables
-          .filter((t) => t.id !== currentTableId)
-          .map((table) => {
-            const openOrder = openByTable.get(table.id);
-            return (
-              <button
-                key={table.id}
-                type="button"
-                onClick={() =>
-                  openOrder ? onMerge(openOrder.order_id) : onMove(table.id)
-                }
-                className={[
-                  'flex min-h-16 flex-col items-center justify-center rounded-(--radius-control) border-2 p-2',
-                  openOrder
-                    ? 'border-(--color-status-open) bg-(--color-status-open-soft)'
-                    : 'border-(--color-border) hover:border-(--color-border-strong)',
-                ].join(' ')}
-              >
-                <span className="font-semibold">{table.name}</span>
-                <span className="text-xs text-(--color-text-faint)">
-                  {openOrder ? 'birleştir' : 'boş'}
-                </span>
-              </button>
-            );
-          })}
       </div>
     </Modal>
   );

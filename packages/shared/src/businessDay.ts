@@ -158,6 +158,21 @@ export function formatClock(date: Date | string): string {
   return trTime.format(typeof date === 'string' ? new Date(date) : date);
 }
 
+const trDateTime = new Intl.DateTimeFormat('tr-TR', {
+  timeZone: SHOP_TIMEZONE,
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+
+/** Fise basildigi tarih+saat: '30.07.2026 21:45' */
+export function formatDateTime(date: Date | string): string {
+  return trDateTime.format(typeof date === 'string' ? new Date(date) : date);
+}
+
 /** Masa planinda "kac dakikadir acik" gostergesi */
 export function formatElapsed(since: Date | string): string {
   const start = typeof since === 'string' ? new Date(since) : since;

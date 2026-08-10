@@ -13,6 +13,7 @@ import {
   type ProductWithGroups,
 } from '../lib/menuData';
 import {
+  useOpenOrders,
   useOrderDetail,
   useOrderMutations,
   usePaymentMutations,
@@ -21,10 +22,11 @@ import {
 } from '../lib/orderData';
 import { useSettings } from '../lib/settings';
 import { buildKitchenTicket } from '../lib/printHelpers';
-import { describeError } from '../lib/supabase';
+import { describeError, isDesktop } from '../lib/supabase';
 import { Button } from '../ui/Button';
 import { useFeedback } from '../ui/feedback';
 import { OptionPicker } from './order/OptionPicker';
+import { MoveMergeModal } from './order/MoveMergeModal';
 
 /**
  * Adisyon ekrani - sistemin en cok kullanilan yeri.
@@ -46,12 +48,21 @@ export function Order() {
   const tables = useTables();
   const settings = useSettings();
   const detail = useOrderDetail(orderId ?? null);
-  const { addItem, changeQuantity, cancelItem, markKitchenPrinted, cancelOrder } =
-    useOrderMutations();
+  const {
+    addItem,
+    changeQuantity,
+    cancelItem,
+    markKitchenPrinted,
+    cancelOrder,
+    moveTable,
+    mergeOrders,
+  } = useOrderMutations();
   const { closeOrder } = usePaymentMutations();
+  const openOrders = useOpenOrders();
 
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [picker, setPicker] = useState<ProductWithGroups | null>(null);
+  const [moveOpen, setMoveOpen] = useState(false);
 
   const groupsById = useMemo(() => {
     const map = new Map<string, OptionGroupWithOptions>();
@@ -163,6 +174,39 @@ export function Order() {
   }
 
   /**
+   * Siparisi kaydedip masa planina doner. Kalemler eklenirken zaten anlik
+   * kaydediliyor; bu buton garsona "kaydettim, cikiyorum" guveni verir ve
+   * (ayar aciksa) yeni kalemleri ocak fisi olarak bastirir. Masa ACIK kalir;
+   * musteriler yerken sonra odeme icin geri donulur.
+   */
+  async function handleSaveAndExit() {
+    if (!orderId) {
+      navigate('/masalar');
+      return;
+    }
+
+    // Otomatik ocak fisi ayari aciksa yeni kalemleri ocaga gonder (masaustunde)
+    if (isDesktop && settings.data?.printer.autoPrintKitchenTicket && detail.data) {
+      const unprinted = detail.data.items.filter(
+        (i) => i.status !== 'cancelled' && !i.kitchen_printed_at,
+      );
+      if (unprinted.length > 0) {
+        const ticket = buildKitchenTicket(detail.data, tableName, unprinted.map((i) => i.id));
+        const result = await window.desktop.print.kitchen(settings.data.printer, ticket);
+        if (result.ok) {
+          await markKitchenPrinted.mutateAsync({ orderId, itemIds: unprinted.map((i) => i.id) });
+        } else {
+          // Yazici hatasi cikisi engellemez; siparis zaten kayitli
+          feedback.toast(result.error ?? 'Ocak fişi basılamadı.', 'error');
+        }
+      }
+    }
+
+    feedback.toast('Masa kaydedildi.', 'ok');
+    navigate('/masalar');
+  }
+
+  /**
    * Masayi odeme almadan kapatir. Iki durum:
    *  - Bos masa (urun yok): yanlis acilmis, adisyon IPTAL edilir (satis sayilmaz).
    *  - Urun var: ikram/zarar olarak odemesiz kapatilir; urunler servis edildigi
@@ -234,6 +278,9 @@ export function Order() {
             <div className="font-semibold">{tableName}</div>
             <div className="text-xs text-(--color-text-faint)">Adisyon #{detail.data.order.order_no}</div>
           </div>
+          <Button variant="secondary" className="ml-auto" onClick={() => setMoveOpen(true)}>
+            Masa taşı / birleştir
+          </Button>
         </div>
 
         {/* Kategori sekmeleri */}
@@ -331,11 +378,17 @@ export function Order() {
             <span className="tabular text-2xl font-bold">{formatTRY(totals.total_kurus)}</span>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          {/* Ana islem: siparisi kaydet ve masa planina don (masa acik kalir) */}
+          <Button size="lg" className="w-full" onClick={handleSaveAndExit}>
+            Kaydet ve Çık
+          </Button>
+
+          <div className="mt-2 grid grid-cols-2 gap-2">
             <Button variant="secondary" onClick={printKitchen}>
               Ocak fişi
             </Button>
             <Button
+              variant="secondary"
               onClick={() => navigate(`/kasa/${orderId}`)}
               disabled={activeItems.length === 0}
             >
@@ -365,6 +418,35 @@ export function Order() {
           onConfirm={({ selected, quantity, note }) => {
             void quickAdd(picker, selected, quantity, note);
             setPicker(null);
+          }}
+        />
+      )}
+
+      {moveOpen && (
+        <MoveMergeModal
+          currentTableId={detail.data.order.table_id}
+          tables={tables.data ?? []}
+          openOrders={openOrders.data ?? []}
+          onClose={() => setMoveOpen(false)}
+          onMove={async (tableId) => {
+            if (!orderId) return;
+            try {
+              await moveTable.mutateAsync({ orderId, tableId });
+              feedback.toast('Masa taşındı.', 'ok');
+              setMoveOpen(false);
+            } catch (e) {
+              feedback.toast(describeError(e), 'error');
+            }
+          }}
+          onMerge={async (targetOrderId) => {
+            if (!orderId) return;
+            try {
+              await mergeOrders.mutateAsync({ sourceOrderId: orderId, targetOrderId });
+              feedback.toast('Adisyonlar birleştirildi.', 'ok');
+              navigate(`/adisyon/${targetOrderId}`);
+            } catch (e) {
+              feedback.toast(describeError(e), 'error');
+            }
           }}
         />
       )}

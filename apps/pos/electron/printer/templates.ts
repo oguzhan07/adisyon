@@ -1,17 +1,22 @@
 /**
  * Fis sablonlari (80mm / 48 karakter).
  *
- * Termal fis tasarim kurallari:
- *  - Fis dar: 48 karakter. Uzun urun adlari sarilir, tutar hep sagda kalir.
- *  - ₺ simgesi termal yazicilarda cogu zaman basilamaz; "TL" yaziyoruz.
- *  - Ocak fisinde FIYAT YOK: ocaktaki kisiye gereksiz bilgi kalabaligi olmaz.
- *  - Hesap fisinde yasal ibare var: bu belge yazarkasa fisinin yerini almaz.
+ * FONT DUZENI (musteriyle onaylandi):
+ *  - Baslik (dukkan adi) ve TOPLAM: iri (cift genislik+yukseklik)
+ *  - Govde (urun satirlari): cift yukseklik -> okunur, 48 kolon korunur
+ *  - Ayrinti/dipnot: normal
+ *
+ * TURKCE: Yazici modeli standart PC857'yi (ESC t 13) desteklemiyor; Turkce
+ * karakterler bozuk cikiyor. Kod sayfasi cozulene kadar tum metni ASCII'ye
+ * sadelestiriyoruz (Yarim Ekmek Kokorec gibi) - fis temiz ve okunur olsun.
+ * asciify() tek kapi; kod sayfasi cozulunce burayi kaldirmak yeterli.
  */
 
 import type { ThermalPrinter } from 'node-thermal-printer';
 import {
   formatClock,
   formatBusinessDay,
+  formatDateTime,
   formatKurusForReceipt,
   PAYMENT_METHOD_LABELS,
   type BillData,
@@ -22,6 +27,19 @@ import {
 import type { ReceiptBuilder } from './adapter';
 
 /* ------------------------------------------------------------------ yardimci */
+
+const TR_MAP: Record<string, string> = {
+  ç: 'c', Ç: 'C', ğ: 'g', Ğ: 'G', ı: 'i', İ: 'I',
+  ö: 'o', Ö: 'O', ş: 's', Ş: 'S', ü: 'u', Ü: 'U',
+  â: 'a', î: 'i', û: 'u', ā: 'a',
+};
+
+/** Turkce harfleri ASCII karsiligina cevirir, kalan ASCII-disi karakteri atar */
+function asciify(text: string): string {
+  return text
+    .replace(/[çÇğĞıİöÖşŞüÜâîûā]/g, (c) => TR_MAP[c] ?? c)
+    .replace(/[^\x20-\x7E]/g, '');
+}
 
 /** Urun adini fis genisligine sarar; ilk satir dolu, devami girintili */
 function wrap(text: string, width: number): string[] {
@@ -48,39 +66,42 @@ function wrap(text: string, width: number): string[] {
 export function kitchenTicket(data: KitchenTicketData): ReceiptBuilder {
   return (p: ThermalPrinter) => {
     p.alignCenter();
-    p.setTextDoubleHeight();
+    p.setTextQuadArea();
     p.bold(true);
-    p.println(data.isPartial ? 'YENİ SİPARİŞ' : 'OCAK FİŞİ');
+    p.println(asciify(data.isPartial ? 'YENI SIPARIS' : 'OCAK FISI'));
     p.bold(false);
     p.setTextNormal();
 
-    // Masa ve siparis no en buyuk puntoda: ocakta uzaktan okunmali
-    p.setTextDoubleHeight();
-    p.println(data.tableLabel);
+    // Masa en buyuk puntoda: ocakta uzaktan okunmali
+    p.setTextQuadArea();
+    p.println(asciify(data.tableLabel));
     p.setTextNormal();
 
-    p.println(`Sipariş No: ${data.orderNo}   Saat: ${formatClock(data.printedAt)}`);
-    if (data.guestCount) p.println(`Kişi: ${data.guestCount}`);
+    p.println(`Siparis No: ${data.orderNo}   Saat: ${formatClock(data.printedAt)}`);
+    if (data.guestCount) p.println(`Kisi: ${data.guestCount}`);
 
     p.alignLeft();
     p.drawLine();
 
     for (const item of data.items) {
       p.bold(true);
-      p.setTextDoubleHeight();
-      p.println(`${item.quantity} x ${item.name}`);
+      p.setTextQuadArea();
+      p.println(asciify(`${item.quantity} x ${item.name}`));
       p.setTextNormal();
       p.bold(false);
 
       for (const option of item.options) {
-        p.println(`   + ${option}`);
+        p.setTextDoubleHeight();
+        p.println(asciify(`   + ${option}`));
+        p.setTextNormal();
       }
-      // Not, ocagin en cok dikkat etmesi gereken bilgi: vurgulu basiyoruz
       if (item.note) {
         p.bold(true);
-        for (const line of wrap(`>> ${item.note}`, 46)) {
+        p.setTextDoubleHeight();
+        for (const line of wrap(asciify(`>> ${item.note}`), 46)) {
           p.println(`   ${line}`);
         }
+        p.setTextNormal();
         p.bold(false);
       }
       p.newLine();
@@ -94,43 +115,47 @@ export function kitchenTicket(data: KitchenTicketData): ReceiptBuilder {
 
 export function billReceipt(data: BillData): ReceiptBuilder {
   return (p: ThermalPrinter) => {
+    // Baslik: iri
     p.alignCenter();
     p.bold(true);
-    p.setTextDoubleHeight();
-    p.println(data.shop.header || data.shop.shopName);
+    p.setTextQuadArea();
+    p.println(asciify(data.shop.header || data.shop.shopName));
     p.setTextNormal();
     p.bold(false);
 
-    if (data.shop.address) p.println(data.shop.address);
-    if (data.shop.phone) p.println(data.shop.phone);
+    if (data.shop.address) p.println(asciify(data.shop.address));
+    if (data.shop.phone) p.println(asciify(data.shop.phone));
 
     p.alignLeft();
     p.drawLine();
-    p.leftRight(data.tableLabel, `Fiş No: ${data.orderNo}`);
-    p.leftRight(`Açılış: ${formatClock(data.openedAt)}`, `Kapanış: ${formatClock(data.closedAt)}`);
+    p.leftRight(asciify(data.tableLabel), `Fis No: ${data.orderNo}`);
+    p.leftRight(`Acilis: ${formatClock(data.openedAt)}`, `Kapanis: ${formatClock(data.closedAt)}`);
+    // Fisin basildigi tarih+saat kagitta gorunsun
+    p.println(`Yazdirma: ${formatDateTime(data.printedAt)}`);
     p.drawLine();
 
+    // Govde: cift yukseklik (okunur)
     for (const item of data.items) {
-      // Satir 1: adet x urun ................ satir toplami
-      const label = `${item.quantity} x ${item.name}`;
+      const label = asciify(`${item.quantity} x ${item.name}`);
       const amount = formatKurusForReceipt(item.lineTotalKurus);
       const labelWidth = 48 - amount.length - 1;
       const labelLines = wrap(label, labelWidth);
 
+      p.setTextDoubleHeight();
       p.leftRight(labelLines[0] ?? '', amount);
       for (const extra of labelLines.slice(1)) {
         p.println(`  ${extra}`);
       }
+      p.setTextNormal();
 
-      // Varyant/ekstralar: ucretli olanlarin farki gorunur
       for (const option of item.options) {
         const suffix =
           option.priceDeltaKurus !== 0
             ? ` (${formatKurusForReceipt(option.priceDeltaKurus)})`
             : '';
-        p.println(`   + ${option.name}${suffix}`);
+        p.println(asciify(`   + ${option.name}${suffix}`));
       }
-      if (item.note) p.println(`   * ${item.note}`);
+      if (item.note) p.println(asciify(`   * ${item.note}`));
     }
 
     p.drawLine();
@@ -138,16 +163,19 @@ export function billReceipt(data: BillData): ReceiptBuilder {
 
     if (data.discountKurus > 0) {
       p.leftRight(
-        `İndirim${data.discountReason ? ` (${data.discountReason})` : ''}`,
+        asciify(`Indirim${data.discountReason ? ` (${data.discountReason})` : ''}`),
         `-${formatKurusForReceipt(data.discountKurus)}`,
       );
     }
 
+    // Toplam: iri, saga yasli
+    p.alignRight();
     p.bold(true);
-    p.setTextDoubleHeight();
-    p.leftRight('TOPLAM', formatKurusForReceipt(data.totalKurus));
+    p.setTextQuadArea();
+    p.println(`TOPLAM ${formatKurusForReceipt(data.totalKurus)}`);
     p.setTextNormal();
     p.bold(false);
+    p.alignLeft();
 
     if (data.payments.length > 0) {
       p.newLine();
@@ -164,11 +192,11 @@ export function billReceipt(data: BillData): ReceiptBuilder {
 
     p.alignCenter();
     p.newLine();
-    if (data.shop.footer) p.println(data.shop.footer);
+    if (data.shop.footer) p.println(asciify(data.shop.footer));
 
-    // Yasal ibare: bastigimiz belge bilgi fisidir, yazarkasa fisi degildir.
-    p.println('Bu belge bilgi amaçlıdır,');
-    p.println('mali değeri olan fiş değildir.');
+    // Yasal ibare
+    p.println('Bu belge bilgi amaclidir,');
+    p.println('mali degeri olan fis degildir.');
   };
 }
 
@@ -178,45 +206,46 @@ export function zReport(data: ZReportData): ReceiptBuilder {
   return (p: ThermalPrinter) => {
     p.alignCenter();
     p.bold(true);
-    p.setTextDoubleHeight();
-    p.println('GÜN SONU RAPORU');
+    p.setTextQuadArea();
+    p.println('GUN SONU');
     p.setTextNormal();
-    p.println(data.shop.shopName);
+    p.println(asciify(data.shop.shopName));
     p.bold(false);
-    p.println(formatBusinessDay(data.businessDay));
-    p.println(`Yazdırma: ${formatClock(data.printedAt)}`);
+    p.println(asciify(formatBusinessDay(data.businessDay)));
+    p.println(`Yazdirma: ${formatDateTime(data.printedAt)}`);
 
     p.alignLeft();
     p.drawLine();
 
-    p.leftRight('Adisyon sayısı', String(data.orderCount));
-    p.leftRight('Satılan kalem', String(data.itemCount));
+    p.leftRight('Adisyon sayisi', String(data.orderCount));
+    p.leftRight('Satilan kalem', String(data.itemCount));
     p.leftRight('Ortalama sepet', formatKurusForReceipt(data.avgBasketKurus));
     p.drawLine();
 
-    p.leftRight('Brüt satış', formatKurusForReceipt(data.grossKurus));
+    p.leftRight('Brut satis', formatKurusForReceipt(data.grossKurus));
     if (data.discountKurus > 0) {
-      p.leftRight('İndirim / ikram', `-${formatKurusForReceipt(data.discountKurus)}`);
+      p.leftRight('Indirim / ikram', `-${formatKurusForReceipt(data.discountKurus)}`);
     }
 
+    p.alignRight();
     p.bold(true);
-    p.setTextDoubleHeight();
-    p.leftRight('CİRO', formatKurusForReceipt(data.netKurus));
+    p.setTextQuadArea();
+    p.println(`CIRO ${formatKurusForReceipt(data.netKurus)}`);
     p.setTextNormal();
     p.bold(false);
+    p.alignLeft();
 
     p.drawLine();
     p.leftRight('Nakit', formatKurusForReceipt(data.cashKurus));
     p.leftRight('Kart', formatKurusForReceipt(data.cardKurus));
 
-    // Kasa sayimi ile karsilastirma icin: nakit tutar kasada olmali
     const paymentSum = data.cashKurus + data.cardKurus;
     if (paymentSum !== data.netKurus) {
       p.newLine();
       p.bold(true);
-      p.leftRight('! Ödeme farkı', formatKurusForReceipt(data.netKurus - paymentSum));
+      p.leftRight('! Odeme farki', formatKurusForReceipt(data.netKurus - paymentSum));
       p.bold(false);
-      p.println('  (açık hesap veya eksik ödeme)');
+      p.println('  (acik hesap veya eksik odeme)');
     }
 
     p.drawLine();
@@ -225,7 +254,7 @@ export function zReport(data: ZReportData): ReceiptBuilder {
     if (data.cancelledItemCount > 0) {
       p.drawLine();
       p.leftRight(
-        `İptal edilen kalem (${data.cancelledItemCount})`,
+        `Iptal kalem (${data.cancelledItemCount})`,
         formatKurusForReceipt(data.cancelledItemKurus),
       );
     }
@@ -233,11 +262,11 @@ export function zReport(data: ZReportData): ReceiptBuilder {
     if (data.topProducts.length > 0) {
       p.drawLine();
       p.bold(true);
-      p.println('EN ÇOK SATANLAR');
+      p.println('EN COK SATANLAR');
       p.bold(false);
       for (const product of data.topProducts) {
         p.leftRight(
-          `${product.quantity} x ${product.name}`,
+          asciify(`${product.quantity} x ${product.name}`),
           formatKurusForReceipt(product.revenueKurus),
         );
       }
@@ -245,83 +274,62 @@ export function zReport(data: ZReportData): ReceiptBuilder {
 
     p.drawLine();
     p.alignCenter();
-    p.println('Bu belge bilgi amaçlıdır,');
-    p.println('mali değeri olan fiş değildir.');
+    p.println('Bu belge bilgi amaclidir,');
+    p.println('mali degeri olan fis degildir.');
   };
 }
 
 /* ------------------------------------------------------------- TEST FISI */
 
-/**
- * Test fisi. Kurulumun ILK GUNUNDE calistirilmali.
- *
- * Sirasiyla su uceyi dogruluyor:
- *   1. Turkce karakterlerin dogru codepage ile basildigi
- *   2. Otomatik kesicinin calistigi (adapter cut() ekliyor)
- *   3. Kasa cekmecesinin acildigi (ayar aciksa)
- */
 export function testReceipt(shopName: string): ReceiptBuilder {
   return (p: ThermalPrinter) => {
     p.alignCenter();
     p.bold(true);
-    p.println('YAZICI TEST FİŞİ');
+    p.setTextQuadArea();
+    p.println('YAZICI TEST');
+    p.setTextNormal();
+    p.println(asciify(shopName));
     p.bold(false);
-    p.println(shopName);
     p.alignLeft();
     p.drawLine();
 
-    p.bold(true);
-    p.println('TÜRKÇE KARAKTER TESTİ');
-    p.bold(false);
-    p.println('Küçük : ç ğ ı i ö ş ü');
-    p.println('Büyük : Ç Ğ I İ Ö Ş Ü');
-    p.println('Cümle : Şişli’de ağır bir çöp yığını');
-    p.println('Ürün  : Yarım Ekmek Kokoreç, Şalgam');
-    p.newLine();
-    p.println('Yukarıdaki satırlarda bozuk karakter');
-    p.println('varsa Ayarlar > Yazıcı bölümünden');
-    p.println('karakter setini değiştirip tekrar');
-    p.println('deneyin.');
-
+    p.println('Bu bir test fisidir.');
+    p.println('Yazici, kesici ve (varsa) kasa');
+    p.println('cekmecesi kontrol ediliyor.');
     p.drawLine();
-    p.bold(true);
-    p.println('BİÇİM TESTİ');
-    p.bold(false);
-    p.leftRight('Sol taraf', 'Sağ taraf');
-    p.leftRight('1 x Yarım Ekmek Kokoreç', formatKurusForReceipt(14000));
+
     p.setTextDoubleHeight();
-    p.println('Büyük punto');
+    p.leftRight('1 x Yarim Ekmek', formatKurusForReceipt(14000));
     p.setTextNormal();
+    p.alignRight();
+    p.setTextQuadArea();
+    p.println(`TOPLAM ${formatKurusForReceipt(14000)}`);
+    p.setTextNormal();
+    p.alignLeft();
 
     p.drawLine();
-    p.println('Fiş buradan kesilmelidir ↓');
+    p.alignCenter();
+    p.println('Fis buradan kesilmelidir');
   };
 }
 
 /* ------------------------------------------------------------ QR ETIKETI */
 
-/**
- * Masalara yapistirilacak QR etiketi.
- * Yazici zaten hazir oldugu icin etiketi ayrica bastirmaya gerek kalmiyor.
- */
 export function qrLabel(data: QrLabelData): ReceiptBuilder {
   return (p: ThermalPrinter) => {
     p.alignCenter();
     p.bold(true);
-    p.setTextDoubleHeight();
-    p.println(data.shopName);
+    p.setTextQuadArea();
+    p.println(asciify(data.shopName));
     p.setTextNormal();
     p.bold(false);
     p.newLine();
-    p.println('MENÜ İÇİN OKUTUN');
+    p.println('MENU ICIN OKUTUN');
     p.newLine();
 
-    // printImageBuffer yerine yazicinin kendi QR komutu: cok daha hizli basar
-    // ve olceklendirme sorunu cikmaz.
     p.printQR(data.url, { cellSize: 8, correction: 'M', model: 2 });
 
     p.newLine();
-    p.println('Fiyatlar güncel menüde');
-    p.println('görüntülenir.');
+    p.println('Fiyatlar guncel menude gorunur.');
   };
 }
