@@ -11,6 +11,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type {
   BillData,
   DesktopApi,
+  InstalledPrinter,
   KitchenTicketData,
   PreparedImage,
   PrinterSettings,
@@ -47,6 +48,8 @@ const api: DesktopApi = {
 
   prepareImage: (filePath: string): Promise<PreparedImage> =>
     ipcRenderer.invoke('image:prepare', filePath),
+
+  listPrinters: (): Promise<InstalledPrinter[]> => ipcRenderer.invoke('printer:list'),
 
   publishMenu: (url: string, secret: string): Promise<PrintOutcome> =>
     ipcRenderer.invoke('menu:publish', url, secret),

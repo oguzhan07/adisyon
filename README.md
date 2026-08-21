@@ -133,17 +133,50 @@ npm run dist:pos
 
 İki bağlantı yolu desteklenir.
 
-### USB (sahada kullanılan yol)
+### USB — yeni bir bilgisayarda sıfırdan kurulum
 
-1. Yazıcıyı USB ile bağlayın ve Windows'ta bir yazıcı kuyruğu oluşturun
-   (sürücü olarak **Generic / Text Only** yeterlidir).
-2. Kasa programı → **Ayarlar → Yazıcı** → bağlantı türü *USB*, **Windows yazıcı adını**
-   birebir girin (örn. `ACLAS80`), **Kaydet**.
-3. **Test fişi bas**.
+**1. Yazıcıyı bağla.** USB kablosunu tak, yazıcıyı aç. Windows cihazı görür ama
+yazdırma kuyruğunu otomatik oluşturmayabilir; o yüzden elle oluşturuyoruz.
 
-> Paylaşım (`\localhostyazıcı`) **gerekmez**. Ham veri, Windows spooler API'sine
-> (winspool, datatype=RAW) küçük bir yardımcı program üzerinden gönderilir; bu yol
-> yönetici izni istemez ve native npm modülü gerektirmez.
+**2. Windows'ta yazıcı kuyruğu oluştur.**
+
+*Arayüzle:* Başlat → Ayarlar → Bluetooth ve cihazlar → Yazıcılar ve tarayıcılar →
+**Cihaz ekle** → yazıcı bulunamazsa **"İstediğim yazıcı listede yok"** →
+**"El ile yapılan ayarlarla yerel yazıcı ekle"** →
+Bağlantı noktası: **USB001** (birden fazla USB portu varsa USB002/USB003 denenir) →
+Üretici **Generic**, yazıcı **Generic / Text Only** →
+Ad: **ACLAS80** (bu adı programa gireceksiniz) →
+Paylaşım sorarsa **"Bu yazıcıyı paylaşma"** → Test sayfası yazdırmadan **Son**.
+
+*PowerShell ile (yönetici olarak):*
+```powershell
+Add-PrinterDriver -Name "Generic / Text Only"
+Add-Printer -Name "ACLAS80" -DriverName "Generic / Text Only" -PortName "USB001"
+```
+
+Hangi USB portunun doğru olduğundan emin değilseniz:
+```powershell
+Get-PrinterPort | Where-Object Name -like "USB*" | Select-Object Name
+```
+
+**3. Programda seç.** Kasa programı → **Ayarlar → Yazıcı** → bağlantı türü **USB** →
+açılır menüden yazıcıyı **seçin** (elle yazmaya gerek yok; liste Windows'tan gelir,
+yeni yazıcı eklediyseniz **Yenile**'ye basın) → satır genişliği **48** → **Kaydet**.
+
+**4. Test et.** **Test fişi bas** → fiş çıkmalı ve otomatik kesilmeli.
+
+> Paylaşım (`\localhostyazıcı`) **gerekmez** ve **yönetici izni istemez**.
+> Ham veri, Windows spooler API'sine (winspool, datatype=RAW) küçük bir yardımcı
+> program üzerinden gönderilir; native npm modülü de kullanılmaz.
+
+### Sık karşılaşılan sorunlar
+
+| Belirti | Sebep / çözüm |
+|---|---|
+| Kağıt çıkıyor ama boş | Termal kağıt ters takılı. Tırnakla sürtün — koyu iz bırakan yüz yazıcı kafasına bakmalı |
+| "Yazıcı bulunamadı" | Seçili yazıcı Windows'tan kaldırılmış. Ayarlar → Yazıcı → **Yenile** → tekrar seçin |
+| Hiç tepki yok | Yanlış USB portu. Başka `USB00x` ile kuyruk oluşturun |
+| Çekmece açılmıyor | Kablo LAN portuna takılı olabilir; **DK** portuna takılmalı. Çekmecenin anahtarı kilitli olmasın |
 
 ### Ağ (Ethernet)
 

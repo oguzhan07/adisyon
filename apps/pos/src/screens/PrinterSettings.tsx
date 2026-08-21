@@ -1,5 +1,9 @@
-import { useEffect, useState } from 'react';
-import { DEFAULT_PRINTER_SETTINGS, type PrinterSettings } from '@adisyon/shared';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  DEFAULT_PRINTER_SETTINGS,
+  type InstalledPrinter,
+  type PrinterSettings,
+} from '@adisyon/shared';
 import { Button } from '../ui/Button';
 import { Field, NumberInput, Select, TextInput, Toggle } from '../ui/Field';
 import { useSettings, useUpdateSettings } from '../lib/settings';
@@ -28,11 +32,30 @@ export function PrinterSettingsScreen() {
 
   const [draft, setDraft] = useState<PrinterSettings>(DEFAULT_PRINTER_SETTINGS);
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
+  const [printers, setPrinters] = useState<InstalledPrinter[]>([]);
+  const [loadingPrinters, setLoadingPrinters] = useState(false);
 
   // Ayarlar yuklendiginde formu doldur
   useEffect(() => {
     if (settings) setDraft(settings.printer);
   }, [settings]);
+
+  /**
+   * Kurulu yazicilari getirir. Elle ad yazmak yerine listeden secmek, tek harf
+   * hatasindan kaynaklanan "yazici bulunamadi" sorununu tamamen ortadan kaldiriyor.
+   */
+  const loadPrinters = useCallback(async () => {
+    setLoadingPrinters(true);
+    try {
+      setPrinters(await window.desktop.listPrinters());
+    } finally {
+      setLoadingPrinters(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadPrinters();
+  }, [loadPrinters]);
 
   function patch(changes: Partial<PrinterSettings>) {
     setDraft((current) => ({ ...current, ...changes }));
@@ -94,7 +117,7 @@ export function PrinterSettingsScreen() {
     <div className="mx-auto max-w-2xl p-6">
       <h1 className="text-xl font-bold">Yazıcı</h1>
       <p className="mt-1 text-sm text-(--color-text-muted)">
-        POSA 80mm termal yazıcı için ayarlar. Kurulumdan sonra mutlaka test fişi basın.
+        80mm termal yazıcı ayarları. Kurulumdan sonra mutlaka test fişi basın.
       </p>
 
       <div className="mt-6 space-y-5 rounded-(--radius-card) border border-(--color-border) bg-(--color-surface-raised) p-5">
@@ -134,17 +157,35 @@ export function PrinterSettingsScreen() {
 
         {isUsb && (
           <Field
-            label="Windows yazıcı adı"
+            label="Yazıcı"
             hint={
-              'Windows’ta kurulu yazıcının adı (Ayarlar > Bluetooth ve cihazlar > ' +
-              'Yazıcılar). Buradaki adla birebir aynı yazılmalı. Örn: ACLAS80'
+              printers.length > 0
+                ? 'Windows’ta kurulu yazıcılar listelenir. Termal yazıcınızı seçin.'
+                : 'Kurulu yazıcı bulunamadı. Önce Windows’ta yazıcıyı ekleyin (Ayarlar > ' +
+                  'Bluetooth ve cihazlar > Yazıcılar), sonra “Listeyi yenile” deyin.'
             }
           >
-            <TextInput
-              value={draft.printerName ?? ''}
-              placeholder="ACLAS80"
-              onChange={(event) => patch({ printerName: event.target.value.trim() || null })}
-            />
+            <div className="flex gap-2">
+              <Select
+                value={draft.printerName ?? ''}
+                onChange={(event) => patch({ printerName: event.target.value || null })}
+                className="flex-1"
+              >
+                <option value="">Seçin…</option>
+                {printers.map((p) => (
+                  <option key={p.name} value={p.name}>
+                    {p.displayName}
+                  </option>
+                ))}
+                {/* Kayitli ad listede yoksa (yazici cikarilmis olabilir) yine de gorunsun */}
+                {draft.printerName && !printers.some((p) => p.name === draft.printerName) && (
+                  <option value={draft.printerName}>{draft.printerName} (bulunamadı)</option>
+                )}
+              </Select>
+              <Button variant="secondary" onClick={loadPrinters} disabled={loadingPrinters}>
+                {loadingPrinters ? '…' : 'Yenile'}
+              </Button>
+            </div>
           </Field>
         )}
 

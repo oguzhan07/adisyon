@@ -142,6 +142,16 @@ export interface PrintOutcome {
   error?: string;
 }
 
+/** Windows'ta kurulu bir yazici (ayarlardaki acilir menu icin) */
+export interface InstalledPrinter {
+  /** Yazdirma icin kullanilan gercek ad - ayarlara bu yazilir */
+  name: string;
+  /** Kullaniciya gosterilecek ad (cogunlukla name ile ayni) */
+  displayName: string;
+  /** Surucu/tip aciklamasi - dogru yaziciyi ayirt etmeye yardim eder */
+  description: string;
+}
+
 /** Urun gorseli hazirlama sonucu (Electron main surecinde sharp ile) */
 export interface PreparedImage {
   /** WebP'ye cevrilmis, boyutlandirilmis gorsel - base64 */
@@ -158,6 +168,13 @@ export interface DesktopApi {
   pickImage(): Promise<string | null>;
   /** Secilen gorseli menuye uygun boyuta getirir ve WebP'ye cevirir */
   prepareImage(filePath: string): Promise<PreparedImage>;
+  /**
+   * Windows'ta kurulu yazicilari listeler.
+   *
+   * Ayarlar ekraninda acilir menu doldurmak icin: yazici adini elle yazmak
+   * tek harf hatasinda "yazici bulunamadi" demek oluyordu.
+   */
+  listPrinters(): Promise<InstalledPrinter[]>;
   /**
    * QR menu sitesinin onbellegini tazeler ("Menüyü yayınla").
    *

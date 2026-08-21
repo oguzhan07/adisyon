@@ -13,6 +13,7 @@ import { join, dirname } from 'node:path';
 import sharp from 'sharp';
 import type {
   BillData,
+  InstalledPrinter,
   KitchenTicketData,
   PreparedImage,
   PrinterSettings,
@@ -220,6 +221,25 @@ function registerIpcHandlers(): void {
       height: output.info.height,
       byteLength: output.data.byteLength,
     };
+  });
+
+  /**
+   * Windows'ta kurulu yazicilar. Electron'un kendi API'si kullaniliyor;
+   * PowerShell calistirmaya gerek yok, aninda doner.
+   */
+  ipcMain.handle('printer:list', async (): Promise<InstalledPrinter[]> => {
+    if (!mainWindow) return [];
+    try {
+      const printers = await mainWindow.webContents.getPrintersAsync();
+      return printers.map((p) => ({
+        name: p.name,
+        displayName: p.displayName || p.name,
+        description: p.description ?? '',
+      }));
+    } catch (error) {
+      console.error('Yazıcı listesi alınamadı:', error);
+      return [];
+    }
   });
 
   /* --------------------------------------------------- menuyu yayinla */
