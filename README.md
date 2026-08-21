@@ -123,32 +123,56 @@ npm run dev:pos
 npm run dist:pos
 ```
 
-Çıktı: `apps/pos/release/`. Kod imzalama sertifikası olmadığı için Windows SmartScreen ilk kurulumda uyarı gösterir; **Daha fazla bilgi → Yine de çalıştır** ile geçilir.
+Çıktı: `%USERPROFILE%\adisyon-release\` (örn. `C:\Users\oguzh\adisyon-release\`).
+
+> **Neden OneDrive dışında:** Proje OneDrive klasöründe. Paketleme sırasında OneDrive senkronizasyonu dosyaları kilitliyor ve derleme `EPERM: rename win-unpacked.tmp` hatasıyla düşüyor. Bu yüzden çıktı klasörü OneDrive dışına alındı. Kod imzalama sertifikası olmadığı için Windows SmartScreen ilk kurulumda uyarı gösterir; **Daha fazla bilgi → Yine de çalıştır** ile geçilir.
 
 ---
 
-## Yazıcı (POSA 80mm termal)
+## Yazıcı (80mm termal — sahada ACLAS PP7_M3 ile test edildi)
 
-**Bağlantı için ağı (Ethernet) tercih edin.** Windows yazıcı sürücüsünden ve oturum durumundan bağımsız olduğu için belirgin şekilde daha kararlıdır.
+İki bağlantı yolu desteklenir.
 
-1. Yazıcıya ağ kablosunu takın, yazıcının kendi menüsünden IP adresini öğrenin.
-2. Ulaşılabilirliği sınayın:
-   ```bash
-   ping YAZICI_IP
-   ```
-3. Kasa programı → **Ayarlar → Yazıcı**: bağlantı türü *Ağ*, IP ve port (9100) girin, **Kaydet**.
-4. **Bağlantıyı sına** → ardından **Test fişi bas**.
+### USB (sahada kullanılan yol)
 
-### Test fişinde kontrol edilecekler
+1. Yazıcıyı USB ile bağlayın ve Windows'ta bir yazıcı kuyruğu oluşturun
+   (sürücü olarak **Generic / Text Only** yeterlidir).
+2. Kasa programı → **Ayarlar → Yazıcı** → bağlantı türü *USB*, **Windows yazıcı adını**
+   birebir girin (örn. `ACLAS80`), **Kaydet**.
+3. **Test fişi bas**.
 
-- Türkçe karakterler: `ç ğ ı i ö ş ü` ve `Ç Ğ I İ Ö Ş Ü` bozuk çıkmamalı
-- Fişin sonu otomatik kesilmeli
-- Kasa çekmecesi ayarı açıksa çekmece açılmalı
-- Sağdaki tutarlar sağ kenara hizalı olmalı
+> Paylaşım (`\localhostyazıcı`) **gerekmez**. Ham veri, Windows spooler API'sine
+> (winspool, datatype=RAW) küçük bir yardımcı program üzerinden gönderilir; bu yol
+> yönetici izni istemez ve native npm modülü gerektirmez.
 
-Karakterler bozuk çıkarsa yazıcı farklı bir kod sayfası kullanıyor demektir (varsayılan: **PC857 Türkçe**).
+### Ağ (Ethernet)
 
-**USB kullanmak zorundaysanız:** yazıcıyı Windows'ta paylaşıma açın (Yazıcı özellikleri → Paylaşım), paylaşım adını ayarlara girin. Bu yol native modül kullanmaz; ham veri `copy /b` ile paylaşıma gönderilir.
+Yazıcının IP'sini öğrenin, `ping` ile erişimi doğrulayın, ayarlarda *Ağ* seçip
+IP ve portu (9100) girin. Birden fazla kasa olacaksa bu yol daha taşınabilirdir.
+
+### Kasa çekmecesi
+
+Çekmecenin RJ11/RJ12 kablosu **yazıcının DK / CASH DRAWER portuna** takılır
+(bilgisayara değil; gücü yazıcı verir). Çekmece şu durumlarda açılır:
+
+- Nakit **ödeme eklendiğinde** (para üstü için)
+- **Kapat ve fiş bas** / **Ödeme almadan kapat**
+- Ödeme ekranındaki **Kasayı aç** butonuyla elle
+
+Ayarlar → Yazıcı bölümünden kapatılabilir.
+
+### Türkçe karakterler
+
+Sahadaki cihaz standart `ESC t 13` (PC857) komutunu uygulamadığı için Türkçe
+karakterler bozuk çıkıyordu. Bu yüzden fiş metinleri **ASCII'ye sadeleştiriliyor**
+("Yarım Ekmek Kokoreç" → "Yarim Ekmek Kokorec"). Tek kapı:
+`apps/pos/electron/printer/templates.ts` içindeki `asciify()`. Doğru kod sayfası
+bulunursa bu fonksiyonu kaldırmak yeterli.
+
+### Fiş düzeni
+
+Başlık ve TOPLAM iri (çift genişlik+yükseklik), ürün satırları çift yükseklik,
+satır genişliği 48 karakter. Fişte yazdırma tarih+saati de basılır.
 
 ---
 

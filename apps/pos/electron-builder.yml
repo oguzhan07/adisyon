@@ -7,7 +7,12 @@ copyright: © Kokoreççi
 electronVersion: 43.2.0
 
 directories:
-  output: release
+  # ONEDRIVE NOTU: Proje OneDrive klasorunun icinde. Paketleme sirasinda
+  # OneDrive senkronizasyonu dosyalari kilitliyor ve derleme
+  # "EPERM: rename win-unpacked.tmp" hatasiyla dusuyor. Bu yuzden cikti
+  # OneDrive DISINA aliniyor. Proje OneDrive disina tasinirsa burasi tekrar
+  # "release" yapilabilir.
+  output: ${env.USERPROFILE}/adisyon-release
   buildResources: build
 
 files:
