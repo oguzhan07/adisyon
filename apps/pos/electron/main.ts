@@ -222,6 +222,48 @@ function registerIpcHandlers(): void {
     };
   });
 
+  /* --------------------------------------------------- menuyu yayinla */
+
+  /**
+   * QR menu sitesinin onbellegini tazeler. Renderer'dan cagrilamaz (CSP
+   * yalnizca Supabase'e izin veriyor), bu yuzden istek burada atilir.
+   */
+  ipcMain.handle(
+    'menu:publish',
+    async (_event, url: string, secret: string): Promise<PrintOutcome> => {
+      if (!url || !secret) {
+        return {
+          ok: false,
+          error: 'Menü adresi veya yayın anahtarı tanımlı değil (.env dosyasını kontrol edin).',
+        };
+      }
+
+      try {
+        const response = await fetch(`${url.replace(/\/$/, '')}/api/revalidate`, {
+          method: 'POST',
+          headers: { 'x-revalidate-secret': secret },
+          signal: AbortSignal.timeout(15_000),
+        });
+
+        if (response.status === 401) {
+          return { ok: false, error: 'Yayın anahtarı hatalı (Vercel’deki değerle eşleşmiyor).' };
+        }
+        if (!response.ok) {
+          return { ok: false, error: `Yayınlama başarısız (HTTP ${response.status}).` };
+        }
+        return { ok: true };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          ok: false,
+          error: /timeout|abort/i.test(message)
+            ? 'Menü sitesine ulaşılamadı (zaman aşımı). İnternet bağlantısını kontrol edin.'
+            : `Menü sitesine ulaşılamadı: ${message}`,
+        };
+      }
+    },
+  );
+
   /* ------------------------------------------------- guvenli oturum deposu */
 
   ipcMain.handle('secureStore:get', (_event, key: string) => secureStoreGet(key));

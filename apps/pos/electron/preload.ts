@@ -48,6 +48,9 @@ const api: DesktopApi = {
   prepareImage: (filePath: string): Promise<PreparedImage> =>
     ipcRenderer.invoke('image:prepare', filePath),
 
+  publishMenu: (url: string, secret: string): Promise<PrintOutcome> =>
+    ipcRenderer.invoke('menu:publish', url, secret),
+
   secureStore: {
     get: (key: string): Promise<string | null> => ipcRenderer.invoke('secureStore:get', key),
     set: (key: string, value: string): Promise<void> =>

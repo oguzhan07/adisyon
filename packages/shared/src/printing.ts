@@ -158,6 +158,15 @@ export interface DesktopApi {
   pickImage(): Promise<string | null>;
   /** Secilen gorseli menuye uygun boyuta getirir ve WebP'ye cevirir */
   prepareImage(filePath: string): Promise<PreparedImage>;
+  /**
+   * QR menu sitesinin onbellegini tazeler ("Menüyü yayınla").
+   *
+   * Neden renderer'dan degil ana surecten: renderer'in CSP'si yalnizca
+   * Supabase'e baglanti izni veriyor; menu sitesi baska bir alan adinda
+   * oldugu icin oradan yapilan istek engellenir. Ana surecte CSP yoktur,
+   * ayrica ileride ozel alan adina gecilse de kod degismez.
+   */
+  publishMenu(url: string, secret: string): Promise<PrintOutcome>;
   /** Oturum jetonu icin isletim sistemi sifrelemeli depo (safeStorage) */
   secureStore: {
     get(key: string): Promise<string | null>;
