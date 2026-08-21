@@ -73,6 +73,11 @@ export function Checkout() {
     try {
       await addPayment.mutateAsync({ orderId, method, amountKurus });
       setAmountText('');
+
+      // NAKIT odemede kasa hemen acilir: kasiyer para ustunu fis basilmadan
+      // verebilmeli. Kartta acilmaz - ihtiyac yok ve bolunmus odemede cekmece
+      // gereksiz yere tekrar tekrar acilirdi.
+      if (method === 'cash') void openDrawer(true);
     } catch (e) {
       feedback.toast(describeError(e), 'error');
     }
@@ -85,6 +90,23 @@ export function Checkout() {
   function fillSplit(parts: number) {
     const share = splitEvenly(remaining, parts)[0] ?? 0;
     setAmountText(String(share / 100).replace('.', ','));
+  }
+
+  /**
+   * Fis basmadan cekmeceyi acar - nakit odemede para ustu vermek icin.
+   *
+   * @param silent Otomatik acilislarda (odeme eklendiginde) true: yazici
+   *   kapaliysa her odemede hata balonu cikmasin. Kullanici "Kasayı aç"
+   *   dugmesine bastiginda ise hatayi gormeli.
+   */
+  async function openDrawer(silent = false) {
+    if (!settings.data) return;
+    if (silent && settings.data.printer.connection === 'disabled') return;
+
+    const result = await window.desktop.print.openDrawer(settings.data.printer);
+    if (!result.ok && !silent) {
+      feedback.toast(result.error ?? 'Kasa açılamadı.', 'error');
+    }
   }
 
   async function handleClose() {
@@ -204,6 +226,10 @@ export function Checkout() {
           <div className="mt-6 flex flex-wrap gap-2">
             <Button variant="secondary" onClick={() => setDiscountOpen(true)}>
               İndirim / ikram
+            </Button>
+            {/* Para ustu vermek icin: fis basmadan cekmeceyi acar */}
+            <Button variant="secondary" onClick={() => openDrawer()}>
+              Kasayı aç
             </Button>
           </div>
         </div>

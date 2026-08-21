@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
+import { useQueryClient } from '@tanstack/react-query';
+import { prefetchCoreData } from './lib/prefetch';
 // v8'den itibaren dom baglantilari ayri paket degil, 'react-router' icinde
 import { HashRouter, NavLink, Navigate, Route, Routes } from 'react-router';
 import { configError, supabase } from './lib/supabase';
@@ -22,6 +24,13 @@ import { Settings } from './screens/Settings';
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [checking, setChecking] = useState(true);
+  const queryClient = useQueryClient();
+
+  // Oturum acilinca menu/masa/ayar verisini onbellege doldur: ekran gecisleri
+  // veritabanini beklemesin (bkz. lib/prefetch.ts)
+  useEffect(() => {
+    if (session) void prefetchCoreData(queryClient);
+  }, [session, queryClient]);
 
   useEffect(() => {
     if (configError) {

@@ -38,6 +38,9 @@ const api: DesktopApi = {
 
     testConnection: (settings: PrinterSettings): Promise<boolean> =>
       ipcRenderer.invoke('print:testConnection', settings),
+
+    openDrawer: (settings: PrinterSettings): Promise<PrintOutcome> =>
+      ipcRenderer.invoke('print:openDrawer', settings),
   },
 
   pickImage: (): Promise<string | null> => ipcRenderer.invoke('dialog:pickImage'),

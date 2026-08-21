@@ -183,6 +183,29 @@ export function useOrderDetail(orderId: string | null) {
 
 /* ------------------------------------------------------------------ islemler */
 
+/**
+ * Iyimser (optimistic) guncellemede toplamlari yerel olarak yeniden hesaplar.
+ *
+ * Gercek toplam v_order_totals view'inda hesaplaniyor; burada yalnizca ekranin
+ * ANLIK dogru gorunmesi icin ayni aritmetigi uyguluyoruz. Sunucu cevabi gelince
+ * (onSettled -> invalidate) gercek degerler zaten yerine oturuyor.
+ */
+function recalcTotals(
+  totals: OrderTotals,
+  amountDeltaKurus: number,
+  itemCountDelta: number,
+): OrderTotals {
+  const subtotal = Math.max(totals.subtotal_kurus + amountDeltaKurus, 0);
+  const total = Math.max(subtotal - totals.discount_kurus, 0);
+  return {
+    ...totals,
+    subtotal_kurus: subtotal,
+    total_kurus: total,
+    remaining_kurus: Math.max(total - totals.paid_kurus, 0),
+    item_count: Math.max(totals.item_count + itemCountDelta, 0),
+  };
+}
+
 export function useOrderMutations() {
   const queryClient = useQueryClient();
 
@@ -263,7 +286,57 @@ export function useOrderMutations() {
 
       return itemId;
     },
-    onSuccess: (_id, vars) => refreshOrder(vars.orderId),
+    /**
+     * ANLIK GERI BILDIRIM: Urun, veritabani cevabini BEKLEMEDEN adisyon
+     * listesinde belirir. Kasiyer yogun serviste "tiklamalar gecikiyor"
+     * hissetmez. Istek basarisiz olursa onceki durum geri yuklenir ve hata
+     * gosterilir (onError).
+     */
+    onMutate: async (vars) => {
+      await queryClient.cancelQueries({ queryKey: qk.order(vars.orderId) });
+      const previous = queryClient.getQueryData<OrderDetail>(qk.order(vars.orderId));
+
+      if (previous) {
+        const tempId = `temp-${Date.now()}`;
+        const optimisticItem: OrderItemFull = {
+          id: tempId,
+          order_id: vars.orderId,
+          product_id: vars.productId,
+          product_name_snapshot: vars.productName,
+          unit_price_kurus_snapshot: vars.unitPriceKurus,
+          quantity: vars.quantity,
+          note: vars.note,
+          status: 'new',
+          kitchen_printed_at: null,
+          cancelled_reason: null,
+          created_at: new Date().toISOString(),
+          options: vars.selected.map((o) => ({
+            id: `temp-opt-${o.option_id}`,
+            order_item_id: tempId,
+            option_id: o.option_id,
+            option_name_snapshot: o.name,
+            price_delta_kurus_snapshot: o.price_delta_kurus,
+          })),
+        };
+
+        const lineTotal =
+          (vars.unitPriceKurus + vars.selected.reduce((s, o) => s + o.price_delta_kurus, 0)) *
+          vars.quantity;
+
+        queryClient.setQueryData<OrderDetail>(qk.order(vars.orderId), {
+          ...previous,
+          items: [...previous.items, optimisticItem],
+          totals: recalcTotals(previous.totals, lineTotal, vars.quantity),
+        });
+      }
+
+      return { previous };
+    },
+    onError: (_err, vars, context) => {
+      const ctx = context as { previous?: OrderDetail } | undefined;
+      if (ctx?.previous) queryClient.setQueryData(qk.order(vars.orderId), ctx.previous);
+    },
+    onSettled: (_id, _err, vars) => refreshOrder(vars.orderId),
   });
 
   const changeQuantity = useMutation({
@@ -281,7 +354,35 @@ export function useOrderMutations() {
         .eq('id', itemId);
       if (error) throw error;
     },
-    onSuccess: (_r, vars) => refreshOrder(vars.orderId),
+    // Adet degisimi de anlik gorunur; hata olursa geri alinir
+    onMutate: async (vars) => {
+      await queryClient.cancelQueries({ queryKey: qk.order(vars.orderId) });
+      const previous = queryClient.getQueryData<OrderDetail>(qk.order(vars.orderId));
+
+      if (previous) {
+        const item = previous.items.find((i) => i.id === vars.itemId);
+        if (item) {
+          const unit =
+            item.unit_price_kurus_snapshot +
+            item.options.reduce((s, o) => s + o.price_delta_kurus_snapshot, 0);
+          const delta = (vars.quantity - item.quantity) * unit;
+
+          queryClient.setQueryData<OrderDetail>(qk.order(vars.orderId), {
+            ...previous,
+            items: previous.items.map((i) =>
+              i.id === vars.itemId ? { ...i, quantity: vars.quantity } : i,
+            ),
+            totals: recalcTotals(previous.totals, delta, vars.quantity - item.quantity),
+          });
+        }
+      }
+      return { previous };
+    },
+    onError: (_err, vars, context) => {
+      const ctx = context as { previous?: OrderDetail } | undefined;
+      if (ctx?.previous) queryClient.setQueryData(qk.order(vars.orderId), ctx.previous);
+    },
+    onSettled: (_r, _err, vars) => refreshOrder(vars.orderId),
   });
 
   /** Kalem iptali: SILINMEZ, status='cancelled' + sebep (denetim izi kalir) */
@@ -307,7 +408,36 @@ export function useOrderMutations() {
         payload: { reason },
       });
     },
-    onSuccess: (_r, vars) => refreshOrder(vars.orderId),
+    // Iptal de anlik: satir listeden hemen dusar
+    onMutate: async (vars) => {
+      await queryClient.cancelQueries({ queryKey: qk.order(vars.orderId) });
+      const previous = queryClient.getQueryData<OrderDetail>(qk.order(vars.orderId));
+
+      if (previous) {
+        const item = previous.items.find((i) => i.id === vars.itemId);
+        if (item) {
+          const unit =
+            item.unit_price_kurus_snapshot +
+            item.options.reduce((s, o) => s + o.price_delta_kurus_snapshot, 0);
+
+          queryClient.setQueryData<OrderDetail>(qk.order(vars.orderId), {
+            ...previous,
+            items: previous.items.map((i) =>
+              i.id === vars.itemId
+                ? { ...i, status: 'cancelled' as const, cancelled_reason: vars.reason }
+                : i,
+            ),
+            totals: recalcTotals(previous.totals, -unit * item.quantity, -item.quantity),
+          });
+        }
+      }
+      return { previous };
+    },
+    onError: (_err, vars, context) => {
+      const ctx = context as { previous?: OrderDetail } | undefined;
+      if (ctx?.previous) queryClient.setQueryData(qk.order(vars.orderId), ctx.previous);
+    },
+    onSettled: (_r, _err, vars) => refreshOrder(vars.orderId),
   });
 
   const setItemStatus = useMutation({

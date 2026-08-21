@@ -132,6 +132,8 @@ export interface PrintApi {
   qrLabel(settings: PrinterSettings, data: QrLabelData): Promise<PrintOutcome>;
   test(settings: PrinterSettings, shopName: string): Promise<PrintOutcome>;
   testConnection(settings: PrinterSettings): Promise<boolean>;
+  /** Fis basmadan yalnizca kasa cekmecesini acar (para ustu vermek icin) */
+  openDrawer(settings: PrinterSettings): Promise<PrintOutcome>;
 }
 
 export interface PrintOutcome {

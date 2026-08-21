@@ -17,7 +17,12 @@ const queryClient = new QueryClient({
       retry: 2,
       retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
       refetchOnWindowFocus: false,
-      staleTime: 10_000,
+      // Menu/masa gibi veriler nadiren degisir; 5 dakika taze sayilir ve ekran
+      // gecislerinde veritabani BEKLENMEZ. Degisiklik yapan islemler zaten
+      // ilgili sorguyu gecersiz kilarak aninda tazeliyor.
+      staleTime: 5 * 60 * 1000,
+      // Onbellekteki veri hemen gosterilip tazeleme arka planda yapilsin
+      refetchOnMount: false,
     },
     mutations: {
       // Yazma islemleri otomatik tekrarlanmaz: ayni odemenin iki kez

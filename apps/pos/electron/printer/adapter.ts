@@ -23,9 +23,10 @@
  */
 
 import { spawn } from 'node:child_process';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { app } from 'electron';
 import { CharacterSet, PrinterTypes, ThermalPrinter } from 'node-thermal-printer';
 import type { PrinterSettings } from '@adisyon/shared';
 
@@ -101,12 +102,21 @@ export async function printReceipt(
   await sendRawToWindowsPrinter(settings.printerName, printer.getBuffer());
 }
 
-/* ------------------------------------------------- winspool RAW (PowerShell) */
+/* ------------------------------------------------- winspool RAW (yardimci exe) */
 
-// Windows spooler API'sine RAW is gonderen C#. PowerShell icinde Add-Type ile
-// derlenir; native npm modulu gerektirmez.
-const WINSPOOL_CS = String.raw`
+/**
+ * HIZ NOTU: Onceki surumde her yazdirmada PowerShell acilip icinde C# kodu
+ * Add-Type ile DERLENIYORDU; bu tek basina 2-3 saniye suruyordu ve kasa
+ * cekmecesi gec aciliyordu.
+ *
+ * Simdi bu kod BIR KEZ kucuk bir konsol uygulamasina derlenip kullanici veri
+ * klasorunde onbellege aliniyor. Sonraki her yazdirma sadece o exe'yi
+ * calistiriyor (~50ms). Ayrica program acilirken onden derleniyor
+ * (prewarmPrinterHelper), boylece ilk fis de hizli cikiyor.
+ */
+const HELPER_CS = String.raw`
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
 public class AdisyonRawPrint {
   [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
@@ -118,48 +128,82 @@ public class AdisyonRawPrint {
   [DllImport("winspool.Drv", EntryPoint="StartPagePrinter", SetLastError=true)] public static extern bool StartPagePrinter(IntPtr h);
   [DllImport("winspool.Drv", EntryPoint="EndPagePrinter", SetLastError=true)] public static extern bool EndPagePrinter(IntPtr h);
   [DllImport("winspool.Drv", EntryPoint="WritePrinter", SetLastError=true)] public static extern bool WritePrinter(IntPtr h, byte[] b, int n, out int w);
-  public static string Send(string printer, byte[] bytes) {
-    IntPtr h; if(!OpenPrinter(printer, out h, IntPtr.Zero)) return "NOPRINTER";
+  public static int Main(string[] args) {
+    if (args.Length < 2) { Console.Error.Write("ARGS"); return 2; }
+    byte[] bytes;
+    try { bytes = File.ReadAllBytes(args[1]); } catch { Console.Error.Write("NOFILE"); return 3; }
+    IntPtr h;
+    if(!OpenPrinter(args[0], out h, IntPtr.Zero)) { Console.Error.Write("NOPRINTER"); return 4; }
     DOCINFO di = new DOCINFO(); di.pDocName="Adisyon"; di.pDataType="RAW"; int w=0; bool ok=false;
     if(StartDocPrinter(h,1,ref di)){ if(StartPagePrinter(h)){ ok=WritePrinter(h,bytes,bytes.Length,out w); EndPagePrinter(h);} EndDocPrinter(h);}
-    ClosePrinter(h); return ok ? "OK" : "WRITEFAIL";
+    ClosePrinter(h);
+    if(!ok) { Console.Error.Write("WRITEFAIL"); return 5; }
+    Console.Out.Write("OK");
+    return 0;
   }
 }
 `;
 
-async function sendRawToWindowsPrinter(printerName: string, buffer: Buffer): Promise<void> {
-  let dir: string | null = null;
-  try {
-    dir = await mkdtemp(join(tmpdir(), 'adisyon-fis-'));
-    const file = join(dir, 'fis.bin');
-    await writeFile(file, buffer);
+function helperPath(): string {
+  return join(app.getPath('userData'), 'print-helper.exe');
+}
+
+let helperReady: Promise<string> | null = null;
+
+/** Yardimci exe'yi (yoksa) derler; ayni anda birden fazla derleme yapilmaz. */
+function ensureHelper(): Promise<string> {
+  if (helperReady) return helperReady;
+
+  helperReady = (async () => {
+    const target = helperPath();
+    try {
+      await access(target);
+      return target; // zaten derlenmis
+    } catch {
+      /* yok, derleyecegiz */
+    }
+
+    await mkdir(app.getPath('userData'), { recursive: true });
 
     const script = `
 $ErrorActionPreference = 'Stop'
 Add-Type -TypeDefinition @"
-${WINSPOOL_CS}
-"@
-$bytes = [System.IO.File]::ReadAllBytes($env:ADISYON_PRINT_FILE)
-$r = [AdisyonRawPrint]::Send($env:ADISYON_PRINTER_NAME, $bytes)
-[Console]::Out.Write($r)
-if ($r -ne 'OK') { exit 1 }
+${HELPER_CS}
+"@ -OutputAssembly $env:ADISYON_HELPER_OUT -OutputType ConsoleApplication
 `;
     const encoded = Buffer.from(script, 'utf16le').toString('base64');
+    await runPowerShell(encoded, { ADISYON_HELPER_OUT: target });
+    await access(target);
+    return target;
+  })().catch((error) => {
+    helperReady = null; // basarisizsa bir dahaki sefere tekrar denensin
+    throw error;
+  });
 
-    const result = await runPowerShell(encoded, {
-      ADISYON_PRINTER_NAME: printerName,
-      ADISYON_PRINT_FILE: file,
-    });
+  return helperReady;
+}
 
-    if (result.includes('NOPRINTER')) {
-      throw new PrinterError(
-        `"${printerName}" adlı yazıcı bulunamadı. Ayarlardaki yazıcı adının ` +
-          'Windows’taki yazıcı adıyla birebir aynı olduğundan emin olun.',
-      );
-    }
-    if (!result.includes('OK')) {
-      throw new PrinterError('Yazıcıya veri gönderilemedi. Yazıcı açık ve bağlı mı?');
-    }
+/**
+ * Program acilirken cagrilir: yardimci exe arka planda hazirlanir, boylece
+ * ilk yazdirma/kasa acma da hizli olur. Hata olursa sessizce gecilir - gercek
+ * hata mesaji yazdirma aninda kullaniciya gosterilir.
+ */
+export function prewarmPrinterHelper(): void {
+  void ensureHelper().catch(() => {
+    /* yazdirma aninda tekrar denenecek */
+  });
+}
+
+async function sendRawToWindowsPrinter(printerName: string, buffer: Buffer): Promise<void> {
+  let dir: string | null = null;
+  try {
+    const helper = await ensureHelper();
+
+    dir = await mkdtemp(join(tmpdir(), 'adisyon-fis-'));
+    const file = join(dir, 'fis.bin');
+    await writeFile(file, buffer);
+
+    await runHelper(helper, [printerName, file]);
   } catch (error) {
     if (error instanceof PrinterError) throw error;
     throw new PrinterError(
@@ -172,6 +216,32 @@ if ($r -ne 'OK') { exit 1 }
       });
     }
   }
+}
+
+function runHelper(exe: string, args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(exe, args, { windowsHide: true });
+
+    let stderr = '';
+    child.stderr?.on('data', (c) => (stderr += String(c)));
+    child.on('error', (e) => reject(new PrinterError(e.message)));
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      if (stderr.includes('NOPRINTER')) {
+        reject(
+          new PrinterError(
+            `"${args[0]}" adlı yazıcı bulunamadı. Ayarlardaki yazıcı adının ` +
+              'Windows’taki yazıcı adıyla birebir aynı olduğundan emin olun.',
+          ),
+        );
+        return;
+      }
+      reject(new PrinterError('Yazıcıya veri gönderilemedi. Yazıcı açık ve bağlı mı?'));
+    });
+  });
 }
 
 function runPowerShell(encodedCommand: string, env: Record<string, string>): Promise<string> {
@@ -188,13 +258,8 @@ function runPowerShell(encodedCommand: string, env: Record<string, string>): Pro
     child.stderr?.on('data', (c) => (stderr += String(c)));
     child.on('error', (e) => reject(new PrinterError(e.message)));
     child.on('close', (code) => {
-      // Cikis kodu 1 olsa da stdout'ta NOPRINTER/WRITEFAIL sinyali var; onu
-      // cagiran taraf yorumluyor. Sadece PowerShell hic calismazsa reject.
-      if (stdout.trim() === '' && code !== 0) {
-        reject(new PrinterError(stderr.trim() || `Yazdırma komutu ${code} koduyla bitti.`));
-      } else {
-        resolve(stdout);
-      }
+      if (code === 0) resolve(stdout);
+      else reject(new PrinterError(stderr.trim() || `Komut ${code} koduyla bitti.`));
     });
   });
 }
@@ -215,6 +280,45 @@ function describeNetworkError(error: unknown, settings: PrinterSettings): string
     return `Yazıcının bulunduğu ağa erişilemiyor (${address}). IP adresi doğru mu?`;
   }
   return `Yazıcı hatası (${address}): ${raw}`;
+}
+
+/**
+ * Kasa cekmecesini FIS BASMADAN acar.
+ *
+ * Neden ayri: Nakit odemede para ustu vermek icin cekmece, hesap fisi
+ * basilmadan ONCE acilmali. Ayrica bozuk para alip koymak gibi durumlarda
+ * kasiyerin satistan bagimsiz cekmeceyi acabilmesi gerekir.
+ *
+ * Yazicidan gecer (cekmecenin beslemesi yaziciya bagli); sadece darbe
+ * komutu gonderilir, hicbir sey yazdirilmaz.
+ */
+export async function openCashDrawerOnly(settings: PrinterSettings): Promise<void> {
+  if (settings.connection === 'disabled') {
+    throw new PrinterError('Yazıcı ayarlardan kapatılmış durumda.');
+  }
+
+  const iface =
+    settings.connection === 'network' && settings.host
+      ? `tcp://${settings.host}:${settings.port}`
+      : 'tcp://127.0.0.1:9100';
+
+  const printer = createPrinter(settings, iface);
+  printer.openCashDrawer();
+
+  if (settings.connection === 'network') {
+    if (!settings.host) throw new PrinterError('Yazıcı IP adresi ayarlardan girilmemiş.');
+    try {
+      await printer.execute();
+    } catch (error) {
+      throw new PrinterError(describeNetworkError(error, settings));
+    }
+    return;
+  }
+
+  if (!settings.printerName) {
+    throw new PrinterError('Windows yazıcı adı ayarlardan girilmemiş.');
+  }
+  await sendRawToWindowsPrinter(settings.printerName, printer.getBuffer());
 }
 
 /**

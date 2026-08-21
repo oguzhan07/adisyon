@@ -20,7 +20,13 @@ import type {
   QrLabelData,
   ZReportData,
 } from '@adisyon/shared';
-import { PrinterError, printReceipt, testConnection } from './printer/adapter';
+import {
+  PrinterError,
+  openCashDrawerOnly,
+  prewarmPrinterHelper,
+  printReceipt,
+  testConnection,
+} from './printer/adapter';
 import { billReceipt, kitchenTicket, qrLabel, testReceipt, zReport } from './printer/templates';
 
 const isDev = !app.isPackaged;
@@ -88,6 +94,8 @@ if (!gotLock) {
 
   void app.whenReady().then(() => {
     registerIpcHandlers();
+    // Yazici yardimcisini arka planda hazirla: ilk fis/kasa acma da hizli olsun
+    prewarmPrinterHelper();
     createWindow();
 
     app.on('activate', () => {
@@ -169,6 +177,11 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('print:testConnection', (_event, settings: PrinterSettings): Promise<boolean> =>
     testConnection(settings),
+  );
+
+  // Fis basmadan cekmeceyi ac (nakit odemede para ustu icin)
+  ipcMain.handle('print:openDrawer', (_event, settings: PrinterSettings): Promise<PrintOutcome> =>
+    guardedPrint(() => openCashDrawerOnly(settings)),
   );
 
   /* ------------------------------------------------------------- gorseller */
