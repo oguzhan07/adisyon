@@ -1,5 +1,19 @@
 # Kokoreççi — QR Menü + Adisyon + Stok Sistemi
 
+> **In English:** A point-of-sale, QR menu and stock control system built for a kokoreç
+> restaurant in Turkey. It has been running the shop's daily operation since it was installed.
+>
+> Two applications share one PostgreSQL database: a **Next.js QR menu** that customers open by
+> scanning the code on their table, and an **Electron cash register** on the shop's Windows PC
+> that handles orders, split payments, recipe-based stock consumption, reporting and thermal
+> receipt printing.
+>
+> About 13,000 lines · a 23-table schema with views, triggers and stored functions · Row Level
+> Security · money and unit-conversion logic unit-tested in a package shared by both apps.
+>
+> The "Önemli tasarım kararları" section below explains why each of these choices was made.
+>
+> 
 İki uygulama, tek veritabanı:
 
 | Parça | Ne | Nerede çalışır |
